@@ -1,5 +1,10 @@
 defmodule Plausible.Stats.Query do
-  defstruct date_range: nil, step_type: nil, period: nil, steps: nil, filters: %{}
+  defstruct date_range: nil,
+            step_type: nil,
+            period: nil,
+            steps: nil,
+            filters: %{},
+            sorts: [desc: "count"]
 
   def shift_back(%__MODULE__{period: "day"} = query) do
     new_date = query.date_range.first |> Timex.shift(days: -1)

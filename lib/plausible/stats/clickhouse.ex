@@ -2,6 +2,7 @@ defmodule Plausible.Stats.Clickhouse do
   use Plausible.Repo
   use Plausible.ClickhouseRepo
   alias Plausible.Stats.Query
+  import Ecto.Query
   @no_ref "Direct / None"
 
   def compare_pageviews_and_visitors(site, query, {pageviews, visitors}) do
@@ -196,10 +197,17 @@ defmodule Plausible.Stats.Clickhouse do
   def top_sources(site, query, limit, page, show_noref \\ false, include \\ []) do
     offset = (page - 1) * limit
 
+    order_by =
+      query.sorts
+      |> Enum.map(fn {direction, sort_column} ->
+        {direction, dynamic([], fragment("?", ^sort_column))}
+      end)
+      |> Keyword.put_new(:asc, dynamic([], fragment("min(start)")))
+
     referrers =
       from(s in base_session_query(site, query),
         group_by: s.referrer_source,
-        order_by: [desc: fragment("count"), asc: fragment("min(start)")],
+        order_by: ^order_by,
         limit: ^limit,
         offset: ^offset
       )
