@@ -57,7 +57,10 @@ defmodule PlausibleWeb.SiteControllerTest do
       assert_email_delivered_with(subject: "Welcome to Plausible")
     end
 
-    test "does not send welcome email if user already has a previous site", %{conn: conn, user: user} do
+    test "does not send welcome email if user already has a previous site", %{
+      conn: conn,
+      user: user
+    } do
       insert(:site, members: [user])
 
       post(conn, "/sites", %{
@@ -199,6 +202,7 @@ defmodule PlausibleWeb.SiteControllerTest do
       site = insert(:site, members: [user])
       insert(:google_auth, user: user, site: site)
       insert(:custom_domain, site: site)
+      insert(:spike_notification, site: site)
 
       delete(conn, "/#{site.domain}")
 
@@ -395,11 +399,28 @@ defmodule PlausibleWeb.SiteControllerTest do
   describe "POST /sites/:website/spike-notification/enable" do
     setup [:create_user, :log_in, :create_site]
 
-    test "creates a spike notification record with the user email", %{conn: conn, site: site, user: user} do
+    test "creates a spike notification record with the user email", %{
+      conn: conn,
+      site: site,
+      user: user
+    } do
       post(conn, "/sites/#{site.domain}/spike-notification/enable")
 
       notification = Repo.get_by(Plausible.Site.SpikeNotification, site_id: site.id)
       assert notification.recipients == [user.email]
+    end
+
+    test "does not allow duplicate spike notification to be created", %{
+      conn: conn,
+      site: site
+    } do
+      post(conn, "/sites/#{site.domain}/spike-notification/enable")
+      post(conn, "/sites/#{site.domain}/spike-notification/enable")
+
+      assert Repo.aggregate(
+               from(s in Plausible.Site.SpikeNotification, where: s.site_id == ^site.id),
+               :count
+             ) == 1
     end
   end
 
@@ -420,7 +441,10 @@ defmodule PlausibleWeb.SiteControllerTest do
 
     test "updates spike notification threshold", %{conn: conn, site: site} do
       insert(:spike_notification, site: site, threshold: 10)
-      put(conn, "/sites/#{site.domain}/spike-notification", %{"spike_notification" => %{"threshold" => "15"}})
+
+      put(conn, "/sites/#{site.domain}/spike-notification", %{
+        "spike_notification" => %{"threshold" => "15"}
+      })
 
       notification = Repo.get_by(Plausible.Site.SpikeNotification, site_id: site.id)
       assert notification.threshold == 15
@@ -433,7 +457,9 @@ defmodule PlausibleWeb.SiteControllerTest do
     test "adds a recipient to the spike notification", %{conn: conn, site: site} do
       insert(:spike_notification, site: site)
 
-      post(conn, "/sites/#{site.domain}/spike-notification/recipients", recipient: "user@email.com")
+      post(conn, "/sites/#{site.domain}/spike-notification/recipients",
+        recipient: "user@email.com"
+      )
 
       report = Repo.get_by(Plausible.Site.SpikeNotification, site_id: site.id)
       assert report.recipients == ["user@email.com"]

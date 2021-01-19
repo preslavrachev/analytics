@@ -36,6 +36,8 @@ defmodule PlausibleWeb.Router do
     forward "/sent-emails", Bamboo.SentEmailViewerPlug
   end
 
+  use Kaffy.Routes, scope: "/crm", pipe_through: [PlausibleWeb.CRMAuthPlug]
+
   scope "/api/stats", PlausibleWeb.Api do
     pipe_through :stats_api
 
@@ -135,6 +137,7 @@ defmodule PlausibleWeb.Router do
     post "/sites/:website/spike-notification/enable", SiteController, :enable_spike_notification
     post "/sites/:website/spike-notification/disable", SiteController, :disable_spike_notification
     put "/sites/:website/spike-notification", SiteController, :update_spike_notification
+
     post "/sites/:website/spike-notification/recipients",
          SiteController,
          :add_spike_notification_recipient

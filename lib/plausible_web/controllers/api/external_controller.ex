@@ -1,6 +1,5 @@
 defmodule PlausibleWeb.Api.ExternalController do
   use PlausibleWeb, :controller
-  use Appsignal.Instrumentation.Decorators
   require Logger
 
   def event(conn, _params) do
@@ -55,10 +54,14 @@ defmodule PlausibleWeb.Api.ExternalController do
     })
   end
 
-  @decorate transaction_event("phoenix_controller")
   defp parse_user_agent(conn) do
     user_agent = Plug.Conn.get_req_header(conn, "user-agent") |> List.first()
-    user_agent && UAInspector.parse(user_agent)
+
+    if user_agent do
+      Cachex.fetch!(:user_agents, user_agent, fn ua ->
+        {:commit, UAInspector.parse(ua)}
+      end)
+    end
   end
 
   defp create_event(conn, params) do
@@ -121,9 +124,11 @@ defmodule PlausibleWeb.Api.ExternalController do
     end
   end
 
-
   defp is_bot?(%UAInspector.Result.Bot{}), do: true
-  defp is_bot?(%UAInspector.Result{client: %UAInspector.Result.Client{name: "Headless Chrome"}}), do: true
+
+  defp is_bot?(%UAInspector.Result{client: %UAInspector.Result.Client{name: "Headless Chrome"}}),
+    do: true
+
   defp is_bot?(_), do: false
 
   defp parse_meta(params) do
@@ -139,8 +144,9 @@ defmodule PlausibleWeb.Api.ExternalController do
   defp get_pathname(nil, _), do: "/"
 
   defp get_pathname(uri, hash_mode) do
-    pathname = (uri.path || "/")
-               |> URI.decode
+    pathname =
+      (uri.path || "/")
+      |> URI.decode()
 
     if hash_mode && uri.fragment do
       pathname <> "#" <> URI.decode(uri.fragment)
@@ -160,10 +166,8 @@ defmodule PlausibleWeb.Api.ExternalController do
     end
   end
 
-
-
-  @decorate transaction_event("phoenix_controller")
   defp parse_referrer(_, nil), do: nil
+
   defp parse_referrer(uri, referrer_str) do
     referrer_uri = URI.parse(referrer_str)
 
@@ -191,7 +195,7 @@ defmodule PlausibleWeb.Api.ExternalController do
   defp clean_referrer(ref) do
     uri = URI.parse(ref.referer)
 
-    if uri && uri.host && uri.scheme in ["http", "https"] do
+    if right_uri?(uri) do
       host = String.replace_prefix(uri.host, "www.", "")
       path = uri.path || ""
       host <> String.trim_trailing(path, "/")
@@ -225,6 +229,7 @@ defmodule PlausibleWeb.Api.ExternalController do
   end
 
   defp major_minor(:unknown), do: ""
+
   defp major_minor(version) do
     version
     |> String.split(".")
@@ -274,8 +279,16 @@ defmodule PlausibleWeb.Api.ExternalController do
   defp clean_uri(uri) do
     uri = URI.parse(String.trim(uri))
 
-    if uri && uri.host && uri.scheme in ["http", "https"] do
+    if right_uri?(uri) do
       String.replace_leading(uri.host, "www.", "")
     end
   end
+
+  defp right_uri?(%URI{host: nil}), do: false
+
+  defp right_uri?(%URI{host: host, scheme: scheme})
+       when scheme in ["http", "https"] and byte_size(host) > 0,
+       do: true
+
+  defp right_uri?(_), do: false
 end
